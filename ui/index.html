@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAG CRM Assistant</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+    <!-- React and Babel CDN for a simple single-file React app -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useRef, useEffect } = React;
+
+      function ChatMessage({ role, content }) {
+        return (
+          <div className={`message ${role}`}>
+            <div className="avatar">{role === 'user' ? '👤' : '🤖'}</div>
+            <div className="bubble">{content}</div>
+          </div>
+        );
+      }
+
+      function Sources({ sources }) {
+        if (!sources || sources.length === 0) return null;
+        return (
+          <details className="sources">
+            <summary>Show sources ({sources.length})</summary>
+            <ul>
+              {sources.map((s, i) => (
+                <li key={i}>
+                  <strong>{s.source}</strong>
+                  <div className="snippet">{s.text}</div>
+                  <div className="score">score: {typeof s.score === 'number' ? s.score.toFixed(3) : s.score}</div>
+                </li>
+              ))}
+            </ul>
+          </details>
+        );
+      }
+
+      function App() {
+        const [messages, setMessages] = useState([
+          { role: 'assistant', content: 'Hi! Ask me anything about our product. 👋' }
+        ]);
+        const [input, setInput] = useState('');
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState(null);
+        const endRef = useRef(null);
+
+        useEffect(() => {
+          endRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, [messages, loading]);
+
+        async function sendMessage(e) {
+          e.preventDefault();
+          setError(null);
+          const trimmed = input.trim();
+          if (!trimmed || loading) return;
+
+          const userMsg = { role: 'user', content: trimmed };
+          setMessages(prev => [...prev, userMsg]);
+          setInput('');
+          setLoading(true);
+
+          try {
+            const res = await fetch('/query', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: 'web_user', query: trimmed, top_k: 5 })
+            });
+
+            if (!res.ok) {
+              const text = await res.text();
+              throw new Error(text || `Request failed with ${res.status}`);
+            }
+
+            const data = await res.json();
+            const assistantText = data?.answer || 'No answer returned.';
+            const sources = data?.retrieved_sources || [];
+
+            setMessages(prev => [
+              ...prev,
+              { role: 'assistant', content: assistantText },
+              sources.length ? { role: 'assistant', content: <Sources sources={sources} /> } : null
+            ].filter(Boolean));
+          } catch (err) {
+            console.error(err);
+            setError('Failed to get a response. Check the API server and your .env settings.');
+            setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I had trouble answering that. Please try again.' }]);
+          } finally {
+            setLoading(false);
+          }
+        }
+
+        return (
+          <div className="container">
+            <header>
+              <h1>RAG CRM Assistant</h1>
+              <a className="docs" href="/docs" target="_blank" rel="noreferrer">API Docs</a>
+            </header>
+
+            <main className="chat">
+              {messages.map((m, i) => (
+                <ChatMessage key={i} role={m.role} content={m.content} />
+              ))}
+              {loading && (
+                <div className="message assistant">
+                  <div className="avatar">🤖</div>
+                  <div className="bubble typing">Thinking…</div>
+                </div>
+              )}
+              <div ref={endRef} />
+            </main>
+
+            {error && <div className="error">{error}</div>}
+
+            <form className="input-row" onSubmit={sendMessage}>
+              <input
+                type="text"
+                placeholder="Ask a question…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={loading}
+              />
+              <button type="submit" disabled={loading || !input.trim()}>
+                {loading ? 'Sending…' : 'Send'}
+              </button>
+            </form>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+  </html>
+
+

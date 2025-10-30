@@ -1,6 +1,7 @@
 # app.py
 import os
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pymongo import MongoClient
 from openai import OpenAI
@@ -37,6 +38,10 @@ app = FastAPI(
     description="Retrieval-Augmented Generation for Customer Support using MongoDB Atlas Vector Search",
     version="1.0.0"
 )
+
+# Serve a simple UI from the `ui` directory if present
+if os.path.isdir("ui"):
+    app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
 
 class QueryRequest(BaseModel):
     user_id: str
